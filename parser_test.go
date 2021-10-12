@@ -5,6 +5,7 @@
 package evtx
 
 import (
+	"bytes"
 	"os/exec"
 	"runtime"
 	"testing"
@@ -35,6 +36,7 @@ func (self *EVTXTestSuite) TestCollector() {
 	out, err := cmd.CombinedOutput()
 	assert.NoError(self.T(), err)
 
+	out = bytes.ReplaceAll(out, []byte{'\r', '\n'}, []byte{'\n'})
 	goldie.Assert(self.T(), "Event4624_"+runtime.GOOS, out)
 }
 
