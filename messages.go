@@ -20,6 +20,7 @@ var (
 type MessageResolver interface {
 	GetMessage(provider, channel string, event_id int) string
 	GetParameter(provider, channel string, parameter_id int) string
+	Close()
 }
 
 func flatten(dict *ordereddict.Dict) []interface{} {

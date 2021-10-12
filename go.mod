@@ -4,6 +4,7 @@ require (
 	github.com/Velocidex/ordereddict v0.0.0-20210502082334-cf5d9045c0d1
 	github.com/alecthomas/assert v0.0.0-20170929043011-405dbfeb8e38
 	github.com/davecgh/go-spew v1.1.1
+	github.com/hashicorp/golang-lru v0.5.4 // indirect
 	github.com/mattn/go-sqlite3 v1.14.8
 	github.com/pkg/errors v0.8.1
 	github.com/sebdah/goldie v1.0.0 // indirect

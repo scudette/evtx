@@ -61,7 +61,7 @@ func (self *parsingContext) Parse() {
 					event.Set("Message", evtx.ExpandMessage(event, self.resolver))
 				}
 
-				// Quite after printing this many records.
+				// Quit after printing this many records.
 				count++
 				if count > *number_of_records {
 					return

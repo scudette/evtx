@@ -33,6 +33,10 @@ func (self *DBResolver) GetParameter(provider, channel string, parameter_id int)
 	return ""
 }
 
+func (self *DBResolver) Close() {
+	self.db.Close()
+}
+
 func NewDBResolver(message_file string) (*DBResolver, error) {
 	database, err := sql.Open("sqlite3", message_file)
 	if err != nil {

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	lru "github.com/hashicorp/golang-lru"
 	errors "github.com/pkg/errors"
 	"golang.org/x/sys/windows/registry"
 	"www.velocidex.com/golang/binparsergen/reader"
@@ -14,39 +15,48 @@ import (
 )
 
 func NewWindowsMessageResolver() *WindowsMessageResolver {
+	cache, err := lru.New(100)
+	if err != nil {
+		panic(err)
+	}
 	return &WindowsMessageResolver{
-		cache: make(map[string]*MessageSet),
+		// string->MessageSet
+		cache: cache,
 	}
 }
 
 type WindowsMessageResolver struct {
-	cache map[string]*MessageSet
+	cache *lru.Cache
 }
 
 func (self *WindowsMessageResolver) getMessageSets(
 	provider, channel string) (*MessageSet, error) {
 
-	// Get provider from cache
-	message_set, pres := self.cache[provider]
+	// Get provider from cache - the cache key is both provider and
+	// channel.
+	key := channel + provider
+	message_set_any, pres := self.cache.Get(key)
 	if !pres {
 		var err error
-		message_set, err = GetMessagesByGUID(provider, channel)
+		message_set_any, err = GetMessagesByGUID(provider, channel)
 		if err != nil {
 			// Try to get the messages by provider name
-			message_set, err = GetMessages(provider, channel)
+			message_set_any, err = GetMessages(provider, channel)
 			if err != nil {
 				// Cache the failure by storing nil in the map
-				self.cache[provider] = nil
+				self.cache.Add(key, nil)
 				return nil, err
 			}
 		}
+		self.cache.Add(key, message_set_any)
 	}
 
-	if message_set == nil {
+	// Negative cache
+	if message_set_any == nil {
 		return nil, errors.New("Not found")
 	}
 
-	return message_set, nil
+	return message_set_any.(*MessageSet), nil
 }
 
 func (self *WindowsMessageResolver) GetMessage(
@@ -57,8 +67,12 @@ func (self *WindowsMessageResolver) GetMessage(
 		return ""
 	}
 
-	res, _ := message_set.Messages[event_id]
-	return res.Message
+	// Get the event if it is there
+	res, pres := message_set.Messages[event_id]
+	if pres {
+		return res.Message
+	}
+	return ""
 }
 
 func (self *WindowsMessageResolver) GetParameter(
@@ -73,9 +87,14 @@ func (self *WindowsMessageResolver) GetParameter(
 		return ""
 	}
 
-	res, _ := message_set.Parameters[parameter_id]
-	return res.Message
+	res, pres := message_set.Parameters[parameter_id]
+	if pres {
+		return res.Message
+	}
+	return ""
 }
+
+func (self *WindowsMessageResolver) Close() {}
 
 type MessageSet struct {
 	Provider   string
@@ -212,6 +231,7 @@ func populateMessages(message_files string, set map[int]*pe.Message) {
 		}
 		defer fd.Close()
 
+		// fmt.Printf("Populating messages from %v\n", message_file)
 		reader, err := reader.NewPagedReader(fd, 4096, 100)
 		if err != nil {
 			continue
