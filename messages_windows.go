@@ -7,15 +7,81 @@ import (
 	"path/filepath"
 	"strings"
 
+	errors "github.com/pkg/errors"
 	"golang.org/x/sys/windows/registry"
 	"www.velocidex.com/golang/binparsergen/reader"
 	pe "www.velocidex.com/golang/go-pe"
 )
 
+func NewWindowsMessageResolver() *WindowsMessageResolver {
+	return &WindowsMessageResolver{
+		cache: make(map[string]*MessageSet),
+	}
+}
+
+type WindowsMessageResolver struct {
+	cache map[string]*MessageSet
+}
+
+func (self *WindowsMessageResolver) getMessageSets(
+	provider, channel string) (*MessageSet, error) {
+
+	// Get provider from cache
+	message_set, pres := self.cache[provider]
+	if !pres {
+		var err error
+		message_set, err = GetMessagesByGUID(provider, channel)
+		if err != nil {
+			// Try to get the messages by provider name
+			message_set, err = GetMessages(provider, channel)
+			if err != nil {
+				// Cache the failure by storing nil in the map
+				self.cache[provider] = nil
+				return nil, err
+			}
+		}
+	}
+
+	if message_set == nil {
+		return nil, errors.New("Not found")
+	}
+
+	return message_set, nil
+}
+
+func (self *WindowsMessageResolver) GetMessage(
+	provider, channel string, event_id int) string {
+
+	message_set, err := self.getMessageSets(provider, channel)
+	if err != nil {
+		return ""
+	}
+
+	res, _ := message_set.Messages[event_id]
+	return res.Message
+}
+
+func (self *WindowsMessageResolver) GetParameter(
+	provider, channel string, parameter_id int) string {
+
+	message_set, err := self.getMessageSets(provider, channel)
+	if err != nil {
+		return ""
+	}
+
+	if message_set.Parameters == nil {
+		return ""
+	}
+
+	res, _ := message_set.Parameters[parameter_id]
+	return res.Message
+}
+
 type MessageSet struct {
-	Provider string
-	Channel  string
-	Messages map[int]*pe.Message
+	Provider   string
+	Channel    string
+	Messages   map[int]*pe.Message
+	Parameters map[int]*pe.Message
 }
 
 // ExpandLocations Produces a list of possible locations the message
@@ -107,21 +173,38 @@ func GetMessagesByGUID(provider_guid, channel string) (*MessageSet, error) {
 		return nil, err
 	}
 
+	parameter_files, _, err := provider_key.GetStringValue("ParameterFileName")
+	if err != nil {
+		parameter_files = ""
+	}
+
 	provider, _, err := provider_key.GetStringValue("")
 	if err != nil {
 		provider = provider_guid
 	}
 
-	return expandLocations(message_files, provider, channel)
+	return expandLocations(message_files, parameter_files, provider, channel)
 }
 
-func expandLocations(message_files, provider, channel string) (*MessageSet, error) {
+func expandLocations(
+	message_files, parameter_files,
+	provider, channel string) (*MessageSet, error) {
 	result := &MessageSet{
-		Provider: provider,
-		Channel:  channel,
-		Messages: make(map[int]*pe.Message),
+		Provider:   provider,
+		Channel:    channel,
+		Messages:   make(map[int]*pe.Message),
+		Parameters: make(map[int]*pe.Message),
 	}
 
+	populateMessages(message_files, result.Messages)
+	if parameter_files != "" {
+		populateMessages(parameter_files, result.Parameters)
+	}
+
+	return result, nil
+}
+
+func populateMessages(message_files string, set map[int]*pe.Message) {
 	for _, message_file := range ExpandLocations(message_files) {
 		fd, err := os.Open(message_file)
 		if err != nil {
@@ -143,12 +226,11 @@ func expandLocations(message_files, provider, channel string) (*MessageSet, erro
 		if len(messages) > 10000 {
 			continue
 		}
+
 		for _, msg := range messages {
-			result.Messages[msg.EventId] = msg
+			set[msg.EventId] = msg
 		}
 	}
-
-	return result, nil
 }
 
 func GetMessages(provider, channel string) (*MessageSet, error) {
@@ -179,5 +261,5 @@ func GetMessages(provider, channel string) (*MessageSet, error) {
 		return nil, err
 	}
 
-	return expandLocations(message_files, provider, channel)
+	return expandLocations(message_files, "", provider, channel)
 }
