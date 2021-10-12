@@ -27,3 +27,15 @@ jobs:
       if: always()
       run: |
         go test -v
+
+    - name: Store Artifacts
+      shell: bash
+      if: always()
+      run: |
+        go test -v -update
+
+    - uses: actions/upload-artifact@master
+      if: always()
+      with:
+        name: fixtures
+        path: fixtures
