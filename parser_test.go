@@ -6,6 +6,7 @@ package evtx
 
 import (
 	"bytes"
+	"fmt"
 	"os/exec"
 	"runtime"
 	"testing"
@@ -37,7 +38,10 @@ func (self *EVTXTestSuite) TestCollector() {
 	assert.NoError(self.T(), err)
 
 	out = bytes.ReplaceAll(out, []byte{'\r', '\n'}, []byte{'\n'})
-	goldie.Assert(self.T(), "Event4624_"+runtime.GOOS, out)
+	fixture_name := "Event4624_" + runtime.GOOS
+	fmt.Printf("Testing fixture %v\n", fixture_name)
+
+	goldie.Assert(self.T(), fixture_name, out)
 }
 
 func TestEvtx(t *testing.T) {
